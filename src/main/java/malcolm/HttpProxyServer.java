@@ -25,6 +25,9 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import io.netty.handler.ssl.util.SelfSignedCertificate;
 
 public class HttpProxyServer {
 
@@ -35,13 +38,16 @@ public class HttpProxyServer {
   }
 
   public void start() throws Exception {
+    final SelfSignedCertificate ssc = new SelfSignedCertificate();
+    final SslContext serverSslContext = SslContext.newServerContext(ssc.certificate(), ssc.privateKey());
+    final SslContext clientSslContext = SslContext.newClientContext(InsecureTrustManagerFactory.INSTANCE);
     final EventLoopGroup bossGroup = new NioEventLoopGroup();
     final EventLoopGroup workerGroup = new NioEventLoopGroup();
     final ChannelFuture channelFuture = new ServerBootstrap()
         .group(bossGroup, workerGroup)
         .channel(NioServerSocketChannel.class)
         .handler(new LoggingHandler(LogLevel.DEBUG))
-        .childHandler(new HttpProxyFrontendInitializer())
+        .childHandler(new HttpProxyFrontendInitializer(serverSslContext, clientSslContext))
         .bind(port);
     try {
       channelFuture.sync().channel().closeFuture().sync();

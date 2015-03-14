@@ -20,23 +20,32 @@ package malcolm;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpContentDecompressor;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslContext;
+
+import java.util.Optional;
 
 public class HttpProxyBackendInitializer extends ChannelInitializer<SocketChannel> {
 
   private final Channel frontendChannel;
 
-  public HttpProxyBackendInitializer(final Channel frontendChannel) {
+  private final Optional<SslContext> clientSslCtx;
+
+  public HttpProxyBackendInitializer(final Channel frontendChannel, final Optional<SslContext> clientSslCtx) {
     this.frontendChannel = frontendChannel;
+    this.clientSslCtx = clientSslCtx;
   }
 
   @Override
   public void initChannel(final SocketChannel ch) {
-    ch.pipeline()
+    final ChannelPipeline pipeline = ch.pipeline();
+    clientSslCtx.ifPresent(sslCtx -> pipeline.addLast(sslCtx.newHandler(ch.alloc())));
+    pipeline
         .addLast(new LoggingHandler(LogLevel.DEBUG))
         .addLast(new HttpClientCodec())
         .addLast(new HttpContentDecompressor())

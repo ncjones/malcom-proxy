@@ -23,7 +23,14 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.http.DefaultHttpResponse;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.ssl.SslContext;
+
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +38,12 @@ import org.slf4j.LoggerFactory;
 public class HttpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
 
   private static final Logger logger = LoggerFactory.getLogger(HttpProxyFrontendHandler.class);
+
+  private final Optional<SslContext> clientSslCtx;
+
+  public HttpProxyFrontendHandler(final Optional<SslContext> clientSslCtx) {
+    this.clientSslCtx = clientSslCtx;
+  }
 
   @Override
   public void channelReadComplete(final ChannelHandlerContext ctx) {
@@ -46,6 +59,14 @@ public class HttpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
 
   private void channelReadHttpRequest(final ChannelHandlerContext ctx, final HttpRequest req) {
     System.out.println(req.getMethod() + " " + req.getUri());
+    if(HttpMethod.CONNECT.equals(req.getMethod())) {
+      connect(ctx);
+    } else {
+      proxy(ctx, req);
+    }
+  }
+
+  private void proxy(final ChannelHandlerContext ctx, final HttpRequest req) {
     this.proxyRequest(ctx, req, f -> {
       if (f.isSuccess()) {
         logger.debug("write complete");
@@ -55,6 +76,10 @@ public class HttpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
         // TODO bad gateway?
       }
     });
+  }
+
+  private void connect(final ChannelHandlerContext ctx) {
+    ctx.channel().writeAndFlush(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));
   }
 
   private Channel proxyRequest(final ChannelHandlerContext ctx, final HttpRequest req,
@@ -77,7 +102,7 @@ public class HttpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
     return new Bootstrap()
       .group(frontendChannel.eventLoop())
       .channel(NioSocketChannel.class)
-      .handler(new HttpProxyBackendInitializer(frontendChannel))
+      .handler(new HttpProxyBackendInitializer(frontendChannel, clientSslCtx))
       .option(ChannelOption.AUTO_READ, false);
   }
 
